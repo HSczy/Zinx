@@ -1,9 +1,9 @@
 package znet
 
 import (
-    "errors"
     "fmt"
     "net"
+    "zinx/utlis"
     "zinx/ziface"
 )
 
@@ -20,20 +20,14 @@ type Server struct {
     IP string
     // 服务器绑定的IP端口
     Port int
-}
-
-func CallBackToClient(conn *net.TCPConn, data []byte, cnt int) error {
-    fmt.Println("[Conn Handle] CallBackToClient...")
-    if _, err := conn.Write(data[:cnt]); err != nil {
-        fmt.Println("write back buf err", err)
-        return errors.New("CallBackToClient error")
-    }
-    return nil
+    // 当前的server 添加一个router，server注册的链接对应的处理业务
+    Router ziface.IRouter
 }
 
 // 启动服务器
 func (s *Server) Start() {
-    fmt.Printf("[Start] Server Listenner at IP :%s,Port %d, is starting\n", s.IP, s.Port)
+    fmt.Printf("[Zinx] ServerName:%s\n Listener at IP : %s\nPort:%d is Starting...\n",
+        utlis.GlobalObject.Name, utlis.GlobalObject.Host, utlis.GlobalObject.TcpPort)
     go func() {
         // 1. 获取一个TCP的Addr
         addr, err := net.ResolveTCPAddr(s.IPVersion, fmt.Sprintf("%s:%d", s.IP, s.Port))
@@ -59,28 +53,10 @@ func (s *Server) Start() {
                 fmt.Println("Accept err", err)
                 continue
             }
-            // 将处理新链接的业务方法和conn进行绑定 得到我们的链接模块
-            dealConn := NewConnection(conner, cid, CallBackToClient)
+            // 将处理新链接的业务方 法和conn进行绑定 得到我们的链接模块
+            dealConn := NewConnection(conner, cid, s.Router)
             cid++
             go dealConn.Start()
-            //// 已经与客户端建立连接，做一些简单的业务，最大512字节的回显业务
-            //go func() {
-            //    // 不断的从客户端获取数据
-            //    for {
-            //        buf := make([]byte, 512)
-            //        cnt, err := conner.Read(buf)
-            //        if err != nil {
-            //            fmt.Println("recv buf err ", err)
-            //            continue
-            //        }
-            //        // 回显功能
-            //        fmt.Printf("receive data:%s,cnt=%d\n", buf, cnt)
-            //        if _, err := conner.Write(buf[:cnt]); err != nil {
-            //            fmt.Println("write back buf err ", err)
-            //            continue
-            //        }
-            //    }
-            //}()
         }
     }()
 
@@ -101,13 +77,22 @@ func (s *Server) Serve() {
     select {}
 }
 
+// 添加路由方法
+func (s *Server) AddRouter(router ziface.IRouter) {
+    s.Router = router
+    fmt.Println("Add router Success!")
+    // TODO 做一些启动服务之后的额外业务
+    return
+}
+
 //初始化Server模块的方法
-func NewServer(name string) ziface.IServer {
+func NewServer() ziface.IServer {
     s := &Server{
-        Name:      name,
+        Name:      utlis.GlobalObject.Name,
         IPVersion: "tcp4",
-        IP:        "0.0.0.0",
-        Port:      8999,
+        IP:        utlis.GlobalObject.Host,
+        Port:      utlis.GlobalObject.TcpPort,
+        Router:    nil,
     }
     return s
 }
