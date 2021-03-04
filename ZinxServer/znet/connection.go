@@ -1,10 +1,10 @@
 package znet
 
 import (
+    "errors"
     "fmt"
     "io"
     "net"
-    "zinx/utlis"
     "zinx/ziface"
 )
 
@@ -43,21 +43,49 @@ func (c *Connection) StartRead() {
 
     for {
         // 读取客户端的数据到buf中，最大512 字节
-        buf := make([]byte, utlis.GlobalObject.MaxPackageSize)
-        _, err := c.Conn.Read(buf)
+        //buf := make([]byte, utlis.GlobalObject.MaxPackageSize)
+        //_, err := c.Conn.Read(buf)
+        //if err != nil {
+        //    if err == io.EOF {
+        //        fmt.Println("End,", err)
+        //        break
+        //    } else {
+        //        fmt.Println("recv buf err", err)
+        //        continue
+        //    }
+        //}
+
+        // 创建一个拆包解包对象
+        dp := NewDataPack()
+        // 读取和苦短的Msg Head 二进制流 8个字节
+        headData := make([]byte, dp.GetHeadLen())
+        if _, err := io.ReadFull(c.GetTCPConnection(), headData); err != nil {
+            fmt.Println("read msg head error ", err)
+            break
+        }
+
+        // 拆包，得到msgID 和msg DataLen 放到msg消息中
+        msg, err := dp.Unpack(headData)
         if err != nil {
-            if err == io.EOF {
-                fmt.Println("End,", err)
+            fmt.Println("package msg error ", err)
+            break
+        }
+        // 根据dataLen 再次读取Data 放在msg.Data
+        var msgData []byte
+        if msg.GetMsgLen() > 0 {
+            msgData = make([]byte, msg.GetMsgLen())
+            _, err := io.ReadFull(c.GetTCPConnection(), msgData)
+            if err != nil {
+                fmt.Println("read msg data error ", err)
                 break
-            } else {
-                fmt.Println("recv buf err", err)
-                continue
             }
         }
+        msg.SetMsgData(msgData)
+
         // 从当前conn数据的Request请求数据
         req := Request{
             conn: c,
-            data: buf,
+            msg:  msg,
         }
         // 从路由中，找到注册绑定过得Conn对应的router调用
         go func(request ziface.IRequest) {
@@ -97,6 +125,21 @@ func (c *Connection) GetConnID() uint32 {
 func (c *Connection) RemoteAddr() net.Addr {
     return c.Conn.RemoteAddr()
 }
-func (c *Connection) Send(data []byte) error {
+func (c *Connection) SendMsg(msgID uint32, data []byte) error {
+    if c.isClosed == true {
+        return errors.New("Connection closed when send msg ")
+    }
+    // 将data 进行封包 MsgDataLen｜MsgId｜Data
+    dp := NewDataPack()
+    msg := NewMessage(msgID, data)
+    binaryMsg, err := dp.Pack(msg)
+    if err != nil {
+        fmt.Println("Pack errors msg id = ", msgID)
+        return errors.New("Pack error msg ")
+    }
+    if _, err = c.Conn.Write(binaryMsg); err != nil {
+        fmt.Println("Write errors msg id = ", msgID)
+        return errors.New("conn Write msg error ")
+    }
     return nil
 }
