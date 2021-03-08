@@ -11,6 +11,8 @@ import (
 
 // 链接模块
 type Connection struct {
+	// 当前conn属于哪个server
+	TcpServer ziface.IServer
 	// 当前链接的socket TCP套接字
 	Conn *net.TCPConn
 	// 链接的ID
@@ -27,8 +29,9 @@ type Connection struct {
 
 // 初始化链接模块的方法
 
-func NewConnection(conn *net.TCPConn, id uint32, msgHandler ziface.IMsgHandler) *Connection {
+func NewConnection(server ziface.IServer, conn *net.TCPConn, id uint32, msgHandler ziface.IMsgHandler) *Connection {
 	c := &Connection{
+		TcpServer:  server,
 		Conn:       conn,
 		ConnID:     id,
 		isClosed:   false,
@@ -36,6 +39,8 @@ func NewConnection(conn *net.TCPConn, id uint32, msgHandler ziface.IMsgHandler) 
 		msgChan:    make(chan []byte),
 		MsgHandler: msgHandler,
 	}
+	// 将conn加入到ConnManager中
+	c.TcpServer.GetConnMgr().AddConn(c)
 	return c
 }
 
@@ -113,8 +118,11 @@ func (c *Connection) Start() {
 	fmt.Println("Conn Start()... ConnID=", c.ConnID)
 	// 启动从当前链接的读数据的业务
 	go c.StartRead()
-	// todo 启动从当前链接协数据的业务
+	// 启动从当前链接写数据的业务
 	go c.StartWrite()
+
+	// 按照开发者传进来的hook函数，在链接创建时调用hook函数
+	c.TcpServer.CallOnConnStart(c)
 }
 
 func (c *Connection) Stop() {
@@ -126,9 +134,14 @@ func (c *Connection) Stop() {
 	}
 	c.isClosed = true
 	//关闭socket链接
+	// 按照开发者传进来的hook函数，在链接销毁前调用hook函数
+	c.TcpServer.CallOnConnStop(c)
+
 	_ = c.Conn.Close()
 	// 告知Writer关闭
 	c.ExitChan <- true
+	// 将当前链接从ConnMgr中删除
+	c.TcpServer.GetConnMgr().DelConn(c)
 	// 关闭chan
 	close(c.ExitChan)
 	close(c.msgChan)

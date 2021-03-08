@@ -11,7 +11,7 @@ type IConnManager interface {
 	// 根据ConnID 获取链接
 	GetConn(connID uint32) (conn IConnection, err error)
 	// 所有链接的个数
-	LenConn() uint32
+	LenConn() int
 	// 停止所有链接
 	StopAllConn()
 }

@@ -61,8 +61,8 @@ func (cm *ConnManager) GetConn(connID uint32) (conn ziface.IConnection, err erro
 }
 
 // 所有链接的个数
-func (cm *ConnManager) LenConn() uint32 {
-	return uint32(len(cm.connMap))
+func (cm *ConnManager) LenConn() int {
+	return len(cm.connMap)
 }
 
 // 停止所有链接
